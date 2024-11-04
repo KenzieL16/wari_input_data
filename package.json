@@ -1,0 +1,21 @@
+{
+  "name": "wari_input_data",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mysql2": "^3.11.3",
+    "node-cron": "^3.0.3",
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5"
+  }
+}
