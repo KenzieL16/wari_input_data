@@ -445,14 +445,14 @@ app.post('/run-closing', async (req, res) => {
   }
 });
 
-//==================Ini Untuk Testing=====================
+//==================Fixed=====================
 // cron.schedule('0 20 * * *, () => {
 //   console.log('Setiap 10 Detik');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
 // });
 
 
-//==================Fixed=====================
+// ==================Ini Untuk Testing=====================
 // cron.schedule('*/10 * * * * *', () => {
 //   console.log('Setiap 10 Detik');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
