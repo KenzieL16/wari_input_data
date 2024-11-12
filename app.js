@@ -385,39 +385,84 @@ const insertAccVoucherDetails = (details, callback) => {
 // Membuat server Express dan route untuk menjalankan pengambilan data
 const app = express();
 
-// app.get('/generate-uuids-excel', (req, res) => {
-//   // Menghasilkan 146 UUID
-//   const uuids = Array.from({ length: 147 }, () => uuidv4());
+app.get('/generate-uuids-excel', (req, res) => {
+  // Menghasilkan 146 UUID
+  const uuids = Array.from({ length: 147 }, () => uuidv4());
 
-//   // Membuat workbook dan worksheet
-//   const wb = xlsx.utils.book_new();
-//   const ws = xlsx.utils.aoa_to_sheet(uuids.map(uuid => [uuid])); // Konversi UUID ke array untuk satu kolom
+  // Membuat workbook dan worksheet
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.aoa_to_sheet(uuids.map(uuid => [uuid])); // Konversi UUID ke array untuk satu kolom
 
-//   // Menambahkan worksheet ke workbook
-//   xlsx.utils.book_append_sheet(wb, ws, 'UUIDs');
+  // Menambahkan worksheet ke workbook
+  xlsx.utils.book_append_sheet(wb, ws, 'UUIDs');
 
-//   // Menyimpan file Excel secara sementara
-//   const filePath = './uuids.xlsx';
-//   xlsx.writeFile(wb, filePath);
+  // Menyimpan file Excel secara sementara
+  const filePath = './uuids.xlsx';
+  xlsx.writeFile(wb, filePath);
 
-//   // Mengirimkan file sebagai respons untuk di-download
-//   res.download(filePath, 'uuids.xlsx', (err) => {
-//       if (err) {
-//           console.error('Error saat mengirim file:', err);
-//       } else {
-//           // Menghapus file setelah di-download
-//           fs.unlinkSync(filePath);
-//       }
-//   });
+  // Mengirimkan file sebagai respons untuk di-download
+  res.download(filePath, 'uuids.xlsx', (err) => {
+      if (err) {
+          console.error('Error saat mengirim file:', err);
+      } else {
+          // Menghapus file setelah di-download
+          fs.unlinkSync(filePath);
+      }
+  });
+});
+
+app.get("/bridge", bridgeData);
+
+function getPreviousMonth() {
+  const now = new Date();
+  now.setMonth(now.getMonth() - 1);  // Set ke bulan sebelumnya
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');  // Bulan dalam dua digit
+  return `${year}-${month}`;
+}
+async function runClosingGL(periode) {
+  try {
+    // Menjalankan prosedur dengan periode bulan sebelumnya
+    dbTarget.query(`CALL sp_ClosingGLNewest('${periode}')`);
+    
+    console.log(`Prosedur sp_ClosingGLNewest berhasil dijalankan untuk periode: ${periode}`);
+    
+    // Tutup koneksi
+    await connection.end();
+  } catch (error) {
+    console.log(`Error saat menjalankan sp_ClosingGLNewest: ${error.message}`);
+  }
+}
+
+app.post('/run-closing', async (req, res) => {
+  const periode = req.body.periode || getPreviousMonth(); // Gunakan periode dari request atau default ke bulan sebelumnya
+
+  try {
+    await runClosingGL(periode);
+    res.status(200).json({ message: `Prosedur sp_ClosingGLNewest berhasil dijalankan untuk periode: ${periode}` });
+  } catch (error) {
+    res.status(500).json({ error: `Error saat menjalankan sp_ClosingGLNewest: ${error.message}` });
+  }
+});
+
+//==================Ini Untuk Testing=====================
+// cron.schedule('0 20 * * *, () => {
+//   console.log('Setiap 10 Detik');
+//   bridgeData(); // panggil fungsi untuk menjalankan query
 // });
 
 
-// app.get("/bridge", bridgeData);
+//==================Fixed=====================
+// cron.schedule('*/10 * * * * *', () => {
+//   console.log('Setiap 10 Detik');
+//   bridgeData(); // panggil fungsi untuk menjalankan query
+// });
 
-cron.schedule('*/10 * * * * *', () => {
-  console.log('Setiap 10 Detik');
-  bridgeData(); // panggil fungsi untuk menjalankan query
-});
+//==================Ini Untuk Closing=====================
+// cron.schedule('0 1 15 * *', () => {
+//   const periode = getPreviousMonth();
+//   runClosingGL(periode);
+// });
 
 
 // Menjalankan server
