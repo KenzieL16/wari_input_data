@@ -5,6 +5,9 @@ import { v4 as uuidv4 } from "uuid";
 import cron from "node-cron";
 import xlsx from 'xlsx';
 import fs from 'fs';
+const app = express();
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 dotenv.config(); // Menginisialisasi variabel environment
 
@@ -68,7 +71,7 @@ const bridgeData = (req, res) => {
     FROM tr_wms_faktur3 twf
     JOIN mst_card mc ON twf.kd_card = mc.kd_card
     WHERE twf.sts_renewal = 'O' 
-    AND twf.tgl_bayar_renewal_fin_key_in = '20241108'
+    AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
   `;
 
   //AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
@@ -384,9 +387,6 @@ const insertAccVoucherDetails = (details, callback) => {
   });
 };
 
-// Membuat server Express dan route untuk menjalankan pengambilan data
-const app = express();
-
 app.get('/generate-uuids-excel', (req, res) => {
   // Menghasilkan 146 UUID
   const uuids = Array.from({ length: 147 }, () => uuidv4());
@@ -447,7 +447,7 @@ app.post('/run-closing', async (req, res) => {
 
 //==================Fixed=====================
 // cron.schedule('0 20 * * *, () => {
-//   console.log('Setiap 10 Detik');
+//   console.log('Setiap Jam 8 Malam');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
 // });
 
@@ -463,7 +463,6 @@ app.post('/run-closing', async (req, res) => {
 //   const periode = getPreviousMonth();
 //   runClosingGL(periode);
 // });
-
 
 // Menjalankan server
 app.listen(3000, () => {
