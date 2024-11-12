@@ -68,8 +68,10 @@ const bridgeData = (req, res) => {
     FROM tr_wms_faktur3 twf
     JOIN mst_card mc ON twf.kd_card = mc.kd_card
     WHERE twf.sts_renewal = 'O' 
-    AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
+    AND twf.tgl_bayar_renewal_fin_key_in = '20241108'
   `;
+
+  //AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
   //AND twf.tgl_bayar_renewal_fin_key_in = '20240920' 
   // Eksekusi query
   dbSource.query(query, (err, results) => {
@@ -410,8 +412,6 @@ app.get('/generate-uuids-excel', (req, res) => {
       }
   });
 });
-
-app.get("/bridge", bridgeData);
 
 function getPreviousMonth() {
   const now = new Date();
