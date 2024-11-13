@@ -275,11 +275,12 @@ const bridgeData = (req, res) => {
       // Mendapatkan nomor urut untuk acc_doc_number dari database target
       getAccDocNumber(yearMonth, (err, nextNumber) => {
         if (err) {
-          return res.status(500).send("Gagal mendapatkan nomor urut");
+          console.log("Gagal mendapatkan nomor urut");
         }
 
         // Mengisi acc_doc_number untuk setiap data yang diambil
         dataToInsert.forEach((item, index) => {
+          // console.log(`Detail untuk item ${index + 1}:`, item.detail);
           const accDocNumber = `JMWKM${yearMonth}${String(
             nextNumber + index
           ).padStart(5, "0")}`;
@@ -287,17 +288,16 @@ const bridgeData = (req, res) => {
           item.doc_number = accDocNumber;
           insertAccVoucher(item, (err) => {
             if (err) {
-              return res
-                .status(500)
-                .send("Gagal memasukkan data ke accvouchers");
+              console.log("Gagal memasukkan data ke accvouchers");
+              return;
             }
-
+            item.detail.forEach(detail => {
+              detail.accvch_id = item.id; // Gunakan item.id yang merupakan mainId untuk setiap detail
+            });
             // Insert detail ke tabel accvoucher_details
             insertAccVoucherDetails(item.detail, (err) => {
               if (err) {
-                return res
-                  .status(500)
-                  .send("Gagal memasukkan data ke accvoucher_details");
+                console.log("Gagal memasukkan data ke accvoucher_details");
               }
             });
           });
@@ -351,40 +351,49 @@ const insertAccVoucherDetails = (details, callback) => {
     paid_to, branch_id, branch_code, coa_lawan, created, create_by, modified, modi_by) 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  details.forEach((detail, index) => {
-    dbTarget.query(
-      query,
-      [
-        detail.id,
-        detail.accvch_id,
-        detail.cost_center_id,
-        detail.coa_id,
-        detail.description,
-        detail.db_cr,
-        detail.amount,
-        detail.source_doc,
-        detail.branch_id,
-        detail.branch_code,
-        detail.fsubsidiary,
-        detail.created,
-        detail.create_by,
-        detail.modified,
-        detail.modi_by,
-      ],
-      (err) => {
-        if (err) {
-          console.error(
-            `Gagal memasukkan detail ke journal_details (row ${index + 1}):`,
-            err
-          );
-          return callback(err);
+  
+  // Gunakan Promise.all untuk menunggu semua query selesai
+  const promises = details.map((detail, index) => {
+    return new Promise((resolve, reject) => {
+      dbTarget.query(
+        query,
+        [
+          detail.id,
+          detail.accvch_id,
+          detail.cost_center_id,
+          detail.coa_id,
+          detail.description,
+          detail.db_cr,
+          detail.amount,
+          detail.source_doc,
+          detail.branch_id,
+          detail.branch_code,
+          detail.fsubsidiary,
+          detail.created,
+          detail.create_by,
+          detail.modified,
+          detail.modi_by,
+        ],
+        (err) => {
+          if (err) {
+            console.error(`Gagal memasukkan detail ke journal_details (row ${index + 1}):`, err);
+            reject(err);
+          } else {
+            resolve();
+          }
         }
-        if (index === details.length - 1) {
-          callback(null);
-        }
-      }
-    );
+      );
+    });
   });
+
+  // Tunggu sampai semua promises selesai
+  Promise.all(promises)
+    .then(() => {
+      callback(null); // Semua detail berhasil dimasukkan
+    })
+    .catch((err) => {
+      callback(err); // Terjadi error
+    });
 };
 
 app.get('/generate-uuids-excel', (req, res) => {
@@ -446,15 +455,15 @@ app.post('/run-closing', async (req, res) => {
 });
 
 //==================Fixed=====================
-// cron.schedule('0 20 * * *, () => {
+// cron.schedule('0 20 * * *', () => {
 //   console.log('Setiap Jam 8 Malam');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
 // });
 
-
+// bridgeData(); 
 // ==================Ini Untuk Testing=====================
 // cron.schedule('*/10 * * * * *', () => {
-//   console.log('Setiap 10 Detik');
+//   console.log('Setiap 5 Detik');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
 // });
 
