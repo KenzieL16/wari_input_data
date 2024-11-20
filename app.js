@@ -12,7 +12,7 @@ app.use(express.json());
 dotenv.config(); // Menginisialisasi variabel environment
 
 // Koneksi database 1 (source)
-const dbSource = mysql.createConnection({
+const dbSource = mysql.createPool({
   host: process.env.DB_HOST_1,
   user: process.env.DB_USER_1,
   password: process.env.DB_PASS_1,
@@ -20,37 +20,33 @@ const dbSource = mysql.createConnection({
 });
 
 // Koneksi database 2 (target)
-const dbTarget = mysql.createConnection({
+const dbTarget = mysql.createPool({
   host: process.env.DB_HOST_2,
   user: process.env.DB_USER_2,
   password: process.env.DB_PASS_2,
   database: process.env.DB_NAME_2,
 });
 
-// Cek koneksi ke database source
-dbSource.connect((err) => {
-  if (err) throw err;
-  console.log("Terhubung ke database source");
-});
-
-// Cek koneksi ke database target
-dbTarget.connect((err) => {
-  if (err) throw err;
-  console.log("Terhubung ke database target");
-});
-
 // Fungsi untuk mendapatkan nomor urut untuk acc_doc_number
 const getAccDocNumber = (yearMonth, callback) => {
   const query = `SELECT COUNT(*) as count FROM journal_headers WHERE journal_headers_id LIKE ?`;
-  dbTarget.query(query, [`JMWKM${yearMonth}%`], (err, results) => {
+  dbTarget.getConnection((err, connection) => {
     if (err) {
-      console.error("Gagal mengambil nomor urut:", err);
+      console.error("Gagal mendapatkan koneksi ke dbTarget:", err);
       return callback(err);
     }
 
-    const count = results[0].count;
-    const nextNumber = count + 1; // Menambah nomor urut
-    callback(null, nextNumber);
+    connection.query(query, [`JMWKM${yearMonth}%`], (queryErr, results) => {
+      connection.release();
+      if (queryErr) {
+        console.error("Gagal mengambil nomor urut:", queryErr);
+        return callback(queryErr);
+      }
+
+      const count = results[0].count;
+      const nextNumber = count + 1; // Menambah nomor urut
+      callback(null, nextNumber);
+    });
   });
 };
 
@@ -77,11 +73,18 @@ const bridgeData = (req, res) => {
   //AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
   //AND twf.tgl_bayar_renewal_fin_key_in = '20240920' 
   // Eksekusi query
-  dbSource.query(query, (err, results) => {
+  dbSource.getConnection((err, connection) => {
     if (err) {
-      console.error("Gagal mengambil data dari source:", err);
-      return res.status(500).send("Gagal mengambil data dari source");
+      console.error("Gagal mendapatkan koneksi ke dbSource:", err);
+      return;
     }
+
+    connection.query(query, [formattedDate], (queryErr, results) => {
+      connection.release();
+      if (queryErr) {
+        console.error("Gagal mengambil data dari source:", queryErr);
+        return;
+      }
 
     // Memeriksa apakah ada data yang diambil
     if (results.length > 0) {
@@ -311,7 +314,7 @@ const bridgeData = (req, res) => {
       // res.send("Tidak ada data yang ditemukan");
     }
   });
-};
+});
 
 const insertAccVoucher = (data, callback) => {
   const query = `
@@ -319,29 +322,38 @@ const insertAccVoucher = (data, callback) => {
     description, tipe_trn, branch_id, created, create_by, modified, modi_by) 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  dbTarget.query(
-    query,
-    [
-      data.id,
-      data.acc_doc_number,
-      data.transaction_date,
-      data.amount,
-      data.description,
-      data.cash_bank_id,
-      data.branch_id,
-      data.created,
-      data.create_by,
-      data.modified,
-      data.modi_by,
-    ],
-    (err, result) => {
-      if (err) {
-        console.error("Gagal memasukkan data ke Journal Header:", err);
-        return callback(err);
-      }
-      callback(null, result);
+  dbTarget.getConnection((err, connection) => {
+    if (err) {
+      console.error("Gagal mendapatkan koneksi ke dbTarget:", err);
+      return callback(err);
     }
-  );
+
+    connection.query(
+      query,
+      [
+        data.id,
+        data.acc_doc_number,
+        data.transaction_date,
+        data.amount,
+        data.description,
+        data.cash_bank_id,
+        data.branch_id,
+        data.created,
+        data.create_by,
+        data.modified,
+        data.modi_by,
+      ],
+      (queryErr, result) => {
+        connection.release(); // Lepaskan koneksi kembali ke pool
+        if (queryErr) {
+          console.error("Gagal memasukkan data ke Journal Header:", queryErr);
+          return callback(queryErr);
+        }
+        callback(null, result);
+      }
+    );
+  });
+  }
 };
 
 // Fungsi untuk memasukkan detail ke tabel accvoucher_details
@@ -353,52 +365,64 @@ const insertAccVoucherDetails = (details, callback) => {
   `;
   
   // Gunakan Promise.all untuk menunggu semua query selesai
-  const promises = details.map((detail, index) => {
-    return new Promise((resolve, reject) => {
-      dbTarget.query(
-        query,
-        [
-          detail.id,
-          detail.accvch_id,
-          detail.cost_center_id,
-          detail.coa_id,
-          detail.description,
-          detail.db_cr,
-          detail.amount,
-          detail.source_doc,
-          detail.branch_id,
-          detail.branch_code,
-          detail.fsubsidiary,
-          detail.created,
-          detail.create_by,
-          detail.modified,
-          detail.modi_by,
-        ],
-        (err) => {
-          if (err) {
-            console.error(`Gagal memasukkan detail ke journal_details (row ${index + 1}):`, err);
-            reject(err);
-          } else {
-            resolve();
-          }
-        }
-      );
-    });
-  });
+  dbTarget.getConnection((err, connection) => {
+    if (err) {
+      console.error("Gagal mendapatkan koneksi ke dbTarget:", err);
+      return callback(err);
+    }
 
-  // Tunggu sampai semua promises selesai
-  Promise.all(promises)
-    .then(() => {
-      callback(null); // Semua detail berhasil dimasukkan
-    })
-    .catch((err) => {
-      callback(err); // Terjadi error
+    const promises = details.map((detail, index) => {
+      return new Promise((resolve, reject) => {
+        connection.query(
+          query,
+          [
+            detail.id,
+            detail.accvch_id,
+            detail.cost_center_id,
+            detail.coa_id,
+            detail.description,
+            detail.db_cr,
+            detail.amount,
+            detail.source_doc,
+            detail.branch_id,
+            detail.branch_code,
+            detail.fsubsidiary,
+            detail.created,
+            detail.create_by,
+            detail.modified,
+            detail.modi_by,
+          ],
+          (queryErr) => {
+            if (queryErr) {
+              console.error(
+                `Gagal memasukkan detail ke journal_details (row ${index + 1}):`,
+                queryErr
+              );
+              reject(queryErr);
+            } else {
+              resolve();
+            }
+          }
+        );
+      });
     });
+
+    // Tunggu sampai semua promises selesai
+    Promise.all(promises)
+      .then(() => {
+        connection.release(); // Lepaskan koneksi setelah semua selesai
+        callback(null); // Semua detail berhasil dimasukkan
+      })
+      .catch((err) => {
+        connection.release(); // Lepaskan koneksi jika ada error
+        callback(err); // Terjadi error
+      });
+  });
 };
 
 app.get('/generate-uuids-excel', (req, res) => {
   // Menghasilkan 146 UUID
-  const uuids = Array.from({ length: 147 }, () => uuidv4());
+  const uuids = Array.from({ length: 151 }, () => uuidv4());
 
   // Membuat workbook dan worksheet
   const wb = xlsx.utils.book_new();
@@ -454,13 +478,13 @@ app.post('/run-closing', async (req, res) => {
   }
 });
 
+// bridgeData(); 
 //==================Fixed=====================
 // cron.schedule('0 20 * * *', () => {
 //   console.log('Setiap Jam 8 Malam');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
 // });
 
-// bridgeData(); 
 // ==================Ini Untuk Testing=====================
 // cron.schedule('*/10 * * * * *', () => {
 //   console.log('Setiap 5 Detik');
