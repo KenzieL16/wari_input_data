@@ -17,6 +17,9 @@ const dbSource = mysql.createPool({
   user: process.env.DB_USER_1,
   password: process.env.DB_PASS_1,
   database: process.env.DB_NAME_1,
+  waitForConnections: true,  // Menunggu jika koneksi penuh
+  connectionLimit: 10,       // Maksimal 10 koneksi aktif pada satu waktu
+  queueLimit: 0   
 });
 
 // Koneksi database 2 (target)
@@ -25,6 +28,9 @@ const dbTarget = mysql.createPool({
   user: process.env.DB_USER_2,
   password: process.env.DB_PASS_2,
   database: process.env.DB_NAME_2,
+  waitForConnections: true,  // Menunggu jika koneksi penuh
+  connectionLimit: 10,       // Maksimal 10 koneksi aktif pada satu waktu
+  queueLimit: 0   
 });
 
 // Fungsi untuk mendapatkan nomor urut untuk acc_doc_number
