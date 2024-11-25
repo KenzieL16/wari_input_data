@@ -33,19 +33,34 @@ const dbTarget = mysql.createPool({
   queueLimit: 0   
 });
 
+function logToFile(message) {
+  const timestamp = new Date().toISOString(); // Tambahkan timestamp ke log
+  const logMessage = `[${timestamp}] ${message}\n`;
+
+  fs.appendFile('server-log.txt', logMessage, (err) => {
+    if (err) {
+      console.error("Gagal menulis ke file log:", err);
+    }
+  });
+}
+
 // Fungsi untuk mendapatkan nomor urut untuk acc_doc_number
 const getAccDocNumber = (yearMonth, callback) => {
   const query = `SELECT COUNT(*) as count FROM journal_headers WHERE journal_headers_id LIKE ?`;
   dbTarget.getConnection((err, connection) => {
     if (err) {
-      console.error("Gagal mendapatkan koneksi ke dbTarget:", err);
+      const msg = 'Gagal mendapatkan koneksi ke dbTarget: '+ err
+      console.log(msg); // Tampilkan di console
+      logToFile(msg); 
       return callback(err);
     }
 
     connection.query(query, [`JMWKM${yearMonth}%`], (queryErr, results) => {
       connection.release();
       if (queryErr) {
-        console.error("Gagal mengambil nomor urut:", queryErr);
+        const msg = 'Gagal engambil nomor urut:'+ queryErr
+        console.log(msg); // Tampilkan di console
+        logToFile(msg);
         return callback(queryErr);
       }
 
@@ -81,21 +96,27 @@ const bridgeData = (req, res) => {
   // Eksekusi query
   dbSource.getConnection((err, connection) => {
     if (err) {
-      console.error("Gagal mendapatkan koneksi ke dbSource:", err);
+      const msg = 'Gagal mendapatkan koneksi ke dbSource: '+ err
+      console.log(msg); // Tampilkan di console
+      logToFile(msg);
       return;
     }
 
     connection.query(query, [formattedDate], (queryErr, results) => {
       connection.release();
       if (queryErr) {
-        console.error("Gagal mengambil data dari source:", queryErr);
+        const msg = 'Gagal mengambil data:'+ queryErr
+        console.log(msg); // Tampilkan di console
+        logToFile(msg);
         return;
       }
 
     // Memeriksa apakah ada data yang diambil
     if (results.length > 0) {
       // Mendapatkan tahun dan bulan saat ini
-      console.log("Data ditemukan dari source, melanjutkan proses insert...");
+      const msg = 'Data ditemukan dari source, melanjutkan proses insert...'
+      console.log(msg); // Tampilkan di console
+      logToFile(msg);
       const now = new Date();
       const yearMonth = `${now.getFullYear().toString().slice(-2)}${String(
         now.getMonth() + 1
@@ -284,6 +305,9 @@ const bridgeData = (req, res) => {
       // Mendapatkan nomor urut untuk acc_doc_number dari database target
       getAccDocNumber(yearMonth, (err, nextNumber) => {
         if (err) {
+          const msg = 'Gagal mendapatkan nomor urt'
+          console.log(msg, err);
+          logToFile(msg);
           console.log("Gagal mendapatkan nomor urut");
         }
 
@@ -297,7 +321,9 @@ const bridgeData = (req, res) => {
           item.doc_number = accDocNumber;
           insertAccVoucher(item, (err) => {
             if (err) {
-              console.log("Gagal memasukkan data ke accvouchers");
+              const msg = 'Gagal menginsert data ke journal header'
+              console.log(msg);
+              logToFile(msg);
               return;
             }
             item.detail.forEach(detail => {
@@ -306,17 +332,23 @@ const bridgeData = (req, res) => {
             // Insert detail ke tabel accvoucher_details
             insertAccVoucherDetails(item.detail, (err) => {
               if (err) {
-                console.log("Gagal memasukkan data ke accvoucher_details");
+                const msg = 'Gagal menginsert data ke journal details'
+                console.log(msg);
+                logToFile(msg);
               }
             });
           });
         });
         // Menampilkan data yang diambil
         // res.json(dataToInsert);
-        console.log('Berhasil Input Data');
+        const msg = 'Berhasil Input Data'
+        console.log(msg);
+        logToFile(msg);
       });
     } else {
-      console.log("Tidak ada data yang ditemukan");
+      const msg = "Tidak ada data yang ditemukan"
+      console.log(msg);
+      logToFile(msg);
       // res.send("Tidak ada data yang ditemukan");
     }
   });
@@ -373,7 +405,9 @@ const insertAccVoucherDetails = (details, callback) => {
   // Gunakan Promise.all untuk menunggu semua query selesai
   dbTarget.getConnection((err, connection) => {
     if (err) {
-      console.error("Gagal mendapatkan koneksi ke dbTarget:", err);
+      const msg = 'Gagal mendapatkan koneksi ke dbTarget:'+ err
+      console.log(msg);
+      logToFile(msg);
       return callback(err);
     }
 
@@ -504,6 +538,8 @@ app.post('/run-closing', async (req, res) => {
 // });
 
 // Menjalankan server
-app.listen(3000, () => {
-  console.log("Server berjalan di port 3000");
+app.listen(process.env.PORT, () => {
+  const logMessage = `Server berjalan di port ${process.env.PORT}` ;
+  console.log(logMessage); // Tampilkan di console
+  logToFile(logMessage);   // Tulis ke file log
 });
