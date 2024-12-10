@@ -44,33 +44,6 @@ function logToFile(message) {
   });
 }
 
-// Fungsi untuk mendapatkan nomor urut untuk acc_doc_number
-const getAccDocNumber = (yearMonth, callback) => {
-  const query = `SELECT COUNT(*) as count FROM journal_headers WHERE journal_headers_id LIKE ?`;
-  dbTarget.getConnection((err, connection) => {
-    if (err) {
-      const msg = 'Gagal mendapatkan koneksi ke dbTarget: '+ err
-      console.log(msg); // Tampilkan di console
-      logToFile(msg); 
-      return callback(err);
-    }
-
-    connection.query(query, [`JMWKM${yearMonth}%`], (queryErr, results) => {
-      connection.release();
-      if (queryErr) {
-        const msg = 'Gagal engambil nomor urut:'+ queryErr
-        console.log(msg); // Tampilkan di console
-        logToFile(msg);
-        return callback(queryErr);
-      }
-
-      const count = results[0].count;
-      const nextNumber = count + 1; // Menambah nomor urut
-      callback(null, nextNumber);
-    });
-  });
-};
-
 // Fungsi untuk mengambil 3 data dari database 1
 const bridgeData = (req, res) => {
   const now = new Date();
@@ -81,16 +54,17 @@ const bridgeData = (req, res) => {
   })
     .format(now)
     .replace(/-/g, ""); // format YYYYMMDD
-    console.log('Data Tanggal : ',formattedDate);
+    // console.log('Data Tanggal : ',formattedDate);
   const query = `
-    SELECT twf.nm_customer11, twf.no_msn, twf.kd_card, twf.tgl_bayar_renewal_fin, 
-           mc.jns_card, mc.harga_pokok, mc.asuransi, mc.asuransi_motor
+    SELECT twf.nm_customer11, twf.nama_ktp, twf.no_msn, twf.kd_card, twf.tgl_bayar_renewal_fin, 
+           mc.jns_card, mc.harga_pokok, mc.asuransi, mc.asuransi_motor, twf.no_tanda_terima
     FROM tr_wms_faktur3 twf
     JOIN mst_card mc ON twf.kd_card = mc.kd_card
     WHERE twf.sts_renewal = 'O' 
     AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
   `;
 
+  //AND twf.no_tanda_terima = 'T001294196'
   //AND twf.tgl_bayar_renewal_fin_key_in = '${formattedDate}'
   //AND twf.tgl_bayar_renewal_fin_key_in = '20240920' 
   // Eksekusi query
@@ -128,13 +102,20 @@ const bridgeData = (req, res) => {
           .toISOString()
           .split("T")[0]; // Adjusted for timezone
         const now = new Date();
+        const accdocnumber= row.no_tanda_terima;
         const verifiedDate = now.toISOString().split("T")[0];
         const amount =
           parseFloat(row.harga_pokok) +
           parseFloat(row.asuransi) +
           parseFloat(row.asuransi_motor);
-        const description = `HVC ${row.nm_customer11} ${row.no_msn}`;
-        const descriptionDetails = `HVC ${row.jns_card} ${row.nm_customer11}`;
+        const description = row.nama_ktp != null && row.nama_ktp.trim() !== ""
+          ? `HVC ${row.nm_customer11} (${row.nama_ktp}) ${row.no_msn}`
+          : `HVC ${row.nm_customer11} ${row.no_msn}`; 
+        // const description = `HVC ${row.nm_customer11} ${row.no_msn}`;
+        const descriptionDetails = row.nama_ktp != null && row.nama_ktp.trim() !== "" 
+          ? `HVC ${row.jns_card} ${row.nm_customer11} (${row.nama_ktp})`
+          : `HVC ${row.jns_card} ${row.nm_customer11}`
+        // const descriptionDetails = `HVC ${row.jns_card} ${row.nm_customer11}`;
         const mainId = uuidv4();
         const harga_product = parseFloat((row.harga_pokok / 1.11).toFixed(2));
         function roundToNearestEven(number) {
@@ -186,9 +167,9 @@ const bridgeData = (req, res) => {
             branch_code: "PUSAT",
             fsubsidiary: null,
             created: verifiedDate,
-            create_by: 1546,
+            create_by: 1,
             modified: verifiedDate,
-            modi_by: 1546,
+            modi_by: 1,
             kunci: null,
           },
           {
@@ -204,9 +185,9 @@ const bridgeData = (req, res) => {
             branch_code: "PUSAT",
             fsubsidiary: null,
             created: verifiedDate,
-            create_by: 1546,
+            create_by: 1,
             modified: verifiedDate,
-            modi_by: 1546,
+            modi_by: 1,
             kunci: null,
           },
           {
@@ -222,9 +203,9 @@ const bridgeData = (req, res) => {
             branch_code: "PUSAT",
             fsubsidiary: null,
             created: verifiedDate,
-            create_by: 1546,
+            create_by: 1,
             modified: verifiedDate,
-            modi_by: 1546,
+            modi_by: 1,
             kunci: null,
           },
           {
@@ -240,9 +221,9 @@ const bridgeData = (req, res) => {
             branch_code: "PUSAT", // Masukkan kode branch sesuai kebutuhan
             fsubsidiary: null, // Masukkan subsidiary sesuai kebutuhan
             created: verifiedDate,
-            create_by: 1546,
+            create_by: 1,
             modified: verifiedDate,
-            modi_by: 1546,
+            modi_by: 1,
             kunci: null,
           },
         ];
@@ -261,16 +242,16 @@ const bridgeData = (req, res) => {
             branch_code: "PUSAT",
             fsubsidiary: null,
             created: verifiedDate,
-            create_by: 1546,
+            create_by: 1,
             modified: verifiedDate,
-            modi_by: 1546,
+            modi_by: 1,
             kunci: null,
           });
         }
 
         return {
           id: mainId,
-          acc_doc_number: "",
+          acc_doc_number: accdocnumber,
           verified_date: verifiedDate,
           date_voucher: null, // Biarkan null
           finvch_id: null, // Biarkan null
@@ -294,31 +275,20 @@ const bridgeData = (req, res) => {
           region_id: null,
           amount_check: amount,
           created: verifiedDate,
-          create_by: 1546,
+          create_by: 1,
           modified: verifiedDate,
-          modi_by: 1546,
+          modi_by: 1,
           kunci: null,
           detail: detail,
         };
       });
 
       // Mendapatkan nomor urut untuk acc_doc_number dari database target
-      getAccDocNumber(yearMonth, (err, nextNumber) => {
-        if (err) {
-          const msg = 'Gagal mendapatkan nomor urt'
-          console.log(msg, err);
-          logToFile(msg);
-          console.log("Gagal mendapatkan nomor urut");
-        }
+      
 
         // Mengisi acc_doc_number untuk setiap data yang diambil
         dataToInsert.forEach((item, index) => {
           // console.log(`Detail untuk item ${index + 1}:`, item.detail);
-          const accDocNumber = `JMWKM${yearMonth}${String(
-            nextNumber + index
-          ).padStart(5, "0")}`;
-          item.acc_doc_number = accDocNumber;
-          item.doc_number = accDocNumber;
           insertAccVoucher(item, (err) => {
             if (err) {
               const msg = 'Gagal menginsert data ke journal header'
@@ -338,13 +308,14 @@ const bridgeData = (req, res) => {
               }
             });
           });
+          const msg = 'Berhasil Input Data'
+          console.log(msg);
+          logToFile(msg);
         });
         // Menampilkan data yang diambil
         // res.json(dataToInsert);
-        const msg = 'Berhasil Input Data'
-        console.log(msg);
-        logToFile(msg);
-      });
+        
+      
     } else {
       const msg = "Tidak ada data yang ditemukan"
       console.log(msg);
@@ -519,7 +490,7 @@ app.post('/run-closing', async (req, res) => {
 });
 
 // bridgeData(); 
-//==================Fixed=====================
+// ==================Fixed=====================
 // cron.schedule('0 20 * * *', () => {
 //   console.log('Setiap Jam 8 Malam');
 //   bridgeData(); // panggil fungsi untuk menjalankan query
